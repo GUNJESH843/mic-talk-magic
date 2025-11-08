@@ -1,0 +1,197 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Mic, MicOff } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import DailyIframe from "@daily-co/daily-js";
+
+const VoiceAgent = () => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [callFrame, setCallFrame] = useState<any>(null);
+  const { toast } = useToast();
+
+  const startConversation = async () => {
+    try {
+      // Call Pipecat API to create session
+      const response = await fetch("https://api.pipecat.daily.co/v1/public/test/start", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer pk_aff3af37-4821-4efc-9776-1f2d300a52d0",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          createDailyRoom: true,
+          dailyRoomProperties: {
+            enable_recording: "cloud",
+            privacy: "public",
+          },
+          dailyMeetingTokenProperties: {
+            is_owner: true,
+          },
+          body: {
+            foo: "bar",
+          },
+        }),
+      });
+
+      const data = await response.json();
+      console.log("Session created:", data);
+
+      // Create Daily call frame
+      const frame = DailyIframe.createFrame({
+        showLeaveButton: false,
+        showFullscreenButton: false,
+        iframeStyle: {
+          position: "fixed",
+          width: "1px",
+          height: "1px",
+          opacity: "0",
+          pointerEvents: "none",
+        },
+      });
+
+      // Join the room
+      await frame.join({
+        url: data.dailyRoom,
+        token: data.dailyToken,
+      });
+
+      setCallFrame(frame);
+      setIsConnected(true);
+
+      // Listen for participant events
+      frame.on("participant-joined", () => {
+        console.log("Participant joined");
+        setIsSpeaking(true);
+      });
+
+      frame.on("participant-left", () => {
+        console.log("Participant left");
+        setIsSpeaking(false);
+      });
+
+      frame.on("track-started", (event: any) => {
+        if (event.track.kind === "audio") {
+          setIsSpeaking(true);
+        }
+      });
+
+      frame.on("track-stopped", (event: any) => {
+        if (event.track.kind === "audio") {
+          setIsSpeaking(false);
+        }
+      });
+
+      toast({
+        title: "Connected",
+        description: "You can now speak with your farming expert",
+      });
+    } catch (error) {
+      console.error("Error starting conversation:", error);
+      toast({
+        title: "Connection Failed",
+        description: "Could not connect to the farming expert",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const endConversation = async () => {
+    if (callFrame) {
+      await callFrame.leave();
+      await callFrame.destroy();
+      setCallFrame(null);
+      setIsConnected(false);
+      setIsSpeaking(false);
+
+      toast({
+        title: "Conversation Ended",
+        description: "Thank you for using Farm Vaidya",
+      });
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background farming image */}
+      <div className="absolute inset-0 opacity-20">
+        <img
+          src="https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=1200&h=800&fit=crop"
+          alt="Farm background"
+          className="w-full h-full object-cover"
+        />
+      </div>
+
+      <div className="relative z-10 w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-primary mb-2">
+            farm <span className="text-accent">vaidya</span>
+          </h1>
+          <p className="text-sm text-muted-foreground">sustainability with voice agent</p>
+        </div>
+
+        {/* Main card */}
+        <Card className="p-8 shadow-2xl backdrop-blur-sm bg-card/95">
+          <div className="text-center space-y-6">
+            <h2 className="text-xl font-semibold text-foreground">
+              Your AI-powered farming expert
+            </h2>
+
+            {/* Microphone button */}
+            <div className="flex justify-center">
+              <button
+                onClick={isConnected ? undefined : startConversation}
+                disabled={isConnected}
+                className={`
+                  relative w-32 h-32 rounded-full bg-accent text-accent-foreground
+                  flex items-center justify-center transition-all duration-300
+                  ${isConnected && isSpeaking ? "pulse-animation" : ""}
+                  ${!isConnected ? "hover:scale-110 cursor-pointer shadow-xl" : "cursor-not-allowed"}
+                  disabled:opacity-90
+                `}
+              >
+                {isConnected ? (
+                  <Mic className="w-12 h-12" />
+                ) : (
+                  <MicOff className="w-12 h-12" />
+                )}
+              </button>
+            </div>
+
+            {/* Status text */}
+            <p className="text-primary font-medium">
+              {isSpeaking ? "You are speaking..." : isConnected ? "Listening..." : "Tap to start"}
+            </p>
+
+            {/* End conversation button */}
+            {isConnected && (
+              <Button
+                onClick={endConversation}
+                variant="destructive"
+                className="w-full rounded-full h-12 text-lg font-semibold"
+              >
+                End Conversation
+              </Button>
+            )}
+
+            {/* Connection status */}
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  isConnected ? "bg-success" : "bg-muted-foreground"
+                }`}
+              />
+              <span className={isConnected ? "text-success" : "text-muted-foreground"}>
+                {isConnected ? "Connected & Ready" : "Not Connected"}
+              </span>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default VoiceAgent;
