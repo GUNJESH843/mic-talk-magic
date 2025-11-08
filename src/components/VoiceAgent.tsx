@@ -1,92 +1,112 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MicOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import DailyIframe from "@daily-co/daily-js";
+import { AudioProcessor } from "@/utils/AudioProcessor";
 
 const VoiceAgent = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [callFrame, setCallFrame] = useState<any>(null);
+  const [isListening, setIsListening] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioProcessorRef = useRef<AudioProcessor | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (audioProcessorRef.current) {
+        audioProcessorRef.current.stopRecording();
+      }
+    };
+  }, []);
 
   const startConversation = async () => {
     try {
-      // Call Pipecat API to create session
-      const response = await fetch("https://api.pipecat.daily.co/v1/public/test/start", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer pk_aff3af37-4821-4efc-9776-1f2d300a52d0",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          createDailyRoom: true,
-          dailyRoomProperties: {
-            enable_recording: "cloud",
-            privacy: "public",
-          },
-          dailyMeetingTokenProperties: {
-            is_owner: true,
-          },
-          body: {
-            foo: "bar",
-          },
-        }),
-      });
+      // Get Supabase project URL from environment
+      const projectUrl = import.meta.env.VITE_SUPABASE_URL;
+      const wsUrl = projectUrl.replace("https://", "wss://") + "/functions/v1/voice-relay";
 
-      const data = await response.json();
-      console.log("Session created:", data);
+      console.log("Connecting to WebSocket:", wsUrl);
 
-      // Create Daily call frame
-      const frame = DailyIframe.createFrame({
-        showLeaveButton: false,
-        showFullscreenButton: false,
-        iframeStyle: {
-          position: "fixed",
-          width: "1px",
-          height: "1px",
-          opacity: "0",
-          pointerEvents: "none",
-        },
-      });
+      // Create WebSocket connection to our Edge Function relay
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-      // Join the room
-      await frame.join({
-        url: data.dailyRoom,
-        token: data.dailyToken,
-      });
+      ws.onopen = () => {
+        console.log("WebSocket connected");
+        setIsConnected(true);
+        setIsListening(true);
 
-      setCallFrame(frame);
-      setIsConnected(true);
+        // Initialize audio processor
+        audioProcessorRef.current = new AudioProcessor((audioData) => {
+          // Send audio data to WebSocket (full duplex - continuous sending)
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(audioData);
+          }
+        });
 
-      // Listen for participant events
-      frame.on("participant-joined", () => {
-        console.log("Participant joined");
-        setIsSpeaking(true);
-      });
+        // Start recording
+        audioProcessorRef.current.startRecording();
 
-      frame.on("participant-left", () => {
-        console.log("Participant left");
+        toast({
+          title: "Connected",
+          description: "You can now speak with your farming expert",
+        });
+      };
+
+      ws.onmessage = async (event) => {
+        console.log("Received message from agent");
+        
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === "session-info") {
+            console.log("Session info:", data.data);
+            return;
+          }
+
+          // Handle audio data from agent (full duplex - continuous receiving)
+          if (data.type === "audio") {
+            setIsSpeaking(true);
+            
+            // Convert base64 audio to ArrayBuffer
+            const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+            
+            // Play audio
+            if (audioProcessorRef.current) {
+              await audioProcessorRef.current.playAudio(audioData.buffer);
+            }
+            
+            setTimeout(() => setIsSpeaking(false), 100);
+          }
+        } catch (error) {
+          console.error("Error processing message:", error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        toast({
+          title: "Connection Error",
+          description: "Failed to maintain connection with farming expert",
+          variant: "destructive",
+        });
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket closed");
+        setIsConnected(false);
+        setIsListening(false);
         setIsSpeaking(false);
-      });
-
-      frame.on("track-started", (event: any) => {
-        if (event.track.kind === "audio") {
-          setIsSpeaking(true);
+        
+        if (audioProcessorRef.current) {
+          audioProcessorRef.current.stopRecording();
         }
-      });
-
-      frame.on("track-stopped", (event: any) => {
-        if (event.track.kind === "audio") {
-          setIsSpeaking(false);
-        }
-      });
-
-      toast({
-        title: "Connected",
-        description: "You can now speak with your farming expert",
-      });
+      };
     } catch (error) {
       console.error("Error starting conversation:", error);
       toast({
@@ -97,19 +117,25 @@ const VoiceAgent = () => {
     }
   };
 
-  const endConversation = async () => {
-    if (callFrame) {
-      await callFrame.leave();
-      await callFrame.destroy();
-      setCallFrame(null);
-      setIsConnected(false);
-      setIsSpeaking(false);
-
-      toast({
-        title: "Conversation Ended",
-        description: "Thank you for using Farm Vaidya",
-      });
+  const endConversation = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
     }
+    
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.stopRecording();
+      audioProcessorRef.current = null;
+    }
+
+    setIsConnected(false);
+    setIsListening(false);
+    setIsSpeaking(false);
+
+    toast({
+      title: "Conversation Ended",
+      description: "Thank you for using Farm Vaidya",
+    });
   };
 
   return (
@@ -162,7 +188,11 @@ const VoiceAgent = () => {
 
             {/* Status text */}
             <p className="text-primary font-medium">
-              {isSpeaking ? "You are speaking..." : isConnected ? "Listening..." : "Tap to start"}
+              {isSpeaking 
+                ? "Agent is speaking..." 
+                : isListening 
+                ? "Listening to you..." 
+                : "Tap to start"}
             </p>
 
             {/* End conversation button */}
