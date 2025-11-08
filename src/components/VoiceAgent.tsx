@@ -61,9 +61,8 @@ const VoiceAgent = () => {
       setIsConnected(true);
 
       // Listen for participant events
-      frame.on("participant-joined", () => {
-        console.log("Participant joined");
-        setIsSpeaking(true);
+      frame.on("participant-joined", (event: any) => {
+        console.log("Participant joined:", event);
       });
 
       frame.on("participant-left", () => {
@@ -71,15 +70,25 @@ const VoiceAgent = () => {
         setIsSpeaking(false);
       });
 
-      frame.on("track-started", (event: any) => {
-        if (event.track.kind === "audio") {
+      // Track when user is speaking using audio level
+      frame.on("active-speaker-change", (event: any) => {
+        console.log("Active speaker:", event);
+        const localParticipant = frame.participants().local;
+        if (event.activeSpeaker?.peerId === localParticipant?.user_id) {
           setIsSpeaking(true);
+        } else {
+          setIsSpeaking(false);
         }
       });
 
-      frame.on("track-stopped", (event: any) => {
-        if (event.track.kind === "audio") {
-          setIsSpeaking(false);
+      // Also track participant updates for more granular control
+      frame.on("participant-updated", (event: any) => {
+        const localParticipant = frame.participants().local;
+        if (event.participant?.user_id === localParticipant?.user_id) {
+          // User's audio state changed
+          if (event.participant?.tracks?.audio?.state === "playable") {
+            // User's mic is active but not necessarily speaking
+          }
         }
       });
 
