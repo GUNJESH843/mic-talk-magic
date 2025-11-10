@@ -8,10 +8,14 @@ import DailyIframe from "@daily-co/daily-js";
 const VoiceAgent = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [callFrame, setCallFrame] = useState<any>(null);
   const { toast } = useToast();
 
   const startConversation = async () => {
+    if (isConnecting || isConnected) return; // Prevent multiple calls
+    
+    setIsConnecting(true);
     try {
       // Call Pipecat API to create session
       const response = await fetch("https://api.pipecat.daily.co/v1/public/test/start", {
@@ -103,6 +107,8 @@ const VoiceAgent = () => {
         description: "Could not connect to the farming expert",
         variant: "destructive",
       });
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -151,13 +157,13 @@ const VoiceAgent = () => {
             {/* Microphone button */}
             <div className="flex justify-center">
               <button
-                onClick={isConnected ? undefined : startConversation}
-                disabled={isConnected}
+                onClick={startConversation}
+                disabled={isConnected || isConnecting}
                 className={`
                   relative w-32 h-32 rounded-full bg-accent text-accent-foreground
                   flex items-center justify-center transition-all duration-300
                   ${isConnected && isSpeaking ? "pulse-animation" : ""}
-                  ${!isConnected ? "hover:scale-110 cursor-pointer shadow-xl" : "cursor-not-allowed"}
+                  ${!isConnected && !isConnecting ? "hover:scale-110 cursor-pointer shadow-xl" : "cursor-not-allowed"}
                   disabled:opacity-90
                 `}
               >
@@ -171,7 +177,7 @@ const VoiceAgent = () => {
 
             {/* Status text */}
             <p className="text-primary font-medium">
-              {isSpeaking ? "You are speaking..." : isConnected ? "Listening..." : "Tap to start"}
+              {isConnecting ? "Connecting..." : isSpeaking ? "You are speaking..." : isConnected ? "Listening..." : "Tap to start"}
             </p>
 
             {/* End conversation button */}
