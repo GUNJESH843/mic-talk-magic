@@ -43,6 +43,22 @@ const VoiceAgent = () => {
       const data = await response.json();
       console.log("Session created:", data);
 
+      // Preflight: ensure no existing Daily call instance remains (prevents duplicate instance errors)
+      try {
+        if (callFrame) {
+          try { await callFrame.leave(); } catch {}
+          try { await callFrame.destroy(); } catch {}
+          setCallFrame(null);
+        }
+        const existing = (DailyIframe as any).getCallInstance?.();
+        if (existing) {
+          try { await existing.leave(); } catch {}
+          try { await existing.destroy(); } catch {}
+        }
+      } catch (e) {
+        console.warn("Daily preflight cleanup failed", e);
+      }
+
       // Create Daily call frame
       const frame = DailyIframe.createFrame({
         showLeaveButton: false,
