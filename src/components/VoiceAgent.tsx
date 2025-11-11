@@ -79,6 +79,12 @@ const VoiceAgent = () => {
       });
 
       setCallFrame(frame);
+      setIsConnected(true);
+      
+      toast({
+        title: "Connected",
+        description: "You can now speak with your farming expert",
+      });
 
       // Handle meeting lifecycle
       frame.on("joined-meeting", () => {
