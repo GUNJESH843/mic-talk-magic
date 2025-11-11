@@ -27,6 +27,7 @@ const VoiceAgent = () => {
         },
         body: JSON.stringify({
           createDailyRoom: true,
+          warm: true,
           dailyRoomProperties: {
             enable_recording: "cloud",
             privacy: "public",
