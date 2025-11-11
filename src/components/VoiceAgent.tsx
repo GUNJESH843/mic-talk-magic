@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, MicOff } from "lucide-react";
@@ -11,11 +11,12 @@ const VoiceAgent = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [callFrame, setCallFrame] = useState<any>(null);
   const { toast } = useToast();
+  const connectLockRef = useRef(false);
 
   const startConversation = async () => {
-    if (isConnecting || isConnected) return; // Prevent multiple calls
-    
+    if (connectLockRef.current || isConnecting || isConnected) return; // Prevent multiple calls
     setIsConnecting(true);
+    connectLockRef.current = true;
     try {
       // Call Pipecat API to create session
       const response = await fetch("https://api.pipecat.daily.co/v1/public/test/start", {
@@ -62,7 +63,33 @@ const VoiceAgent = () => {
       });
 
       setCallFrame(frame);
-      setIsConnected(true);
+
+      // Handle meeting lifecycle
+      frame.on("joined-meeting", () => {
+        console.log("Joined meeting");
+        setIsConnected(true);
+        toast({
+          title: "Connected",
+          description: "You can now speak with your farming expert",
+        });
+      });
+
+      frame.on("left-meeting", () => {
+        console.log("Left meeting");
+        setIsConnected(false);
+        setIsSpeaking(false);
+      });
+
+      frame.on("error", (e: any) => {
+        console.error("Daily error:", e);
+        setIsSpeaking(false);
+        setIsConnected(false);
+        toast({
+          title: "Connection error",
+          description: "Could not connect to the farming expert",
+          variant: "destructive",
+        });
+      });
 
       // Listen for participant events
       frame.on("participant-joined", (event: any) => {
@@ -96,10 +123,6 @@ const VoiceAgent = () => {
         }
       });
 
-      toast({
-        title: "Connected",
-        description: "You can now speak with your farming expert",
-      });
     } catch (error) {
       console.error("Error starting conversation:", error);
       toast({
@@ -109,6 +132,7 @@ const VoiceAgent = () => {
       });
     } finally {
       setIsConnecting(false);
+      connectLockRef.current = false;
     }
   };
 
@@ -119,6 +143,7 @@ const VoiceAgent = () => {
       setCallFrame(null);
       setIsConnected(false);
       setIsSpeaking(false);
+      connectLockRef.current = false;
 
       toast({
         title: "Conversation Ended",
