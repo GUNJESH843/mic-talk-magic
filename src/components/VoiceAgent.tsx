@@ -8,14 +8,10 @@ import DailyIframe from "@daily-co/daily-js";
 const VoiceAgent = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [callFrame, setCallFrame] = useState<any>(null);
   const { toast } = useToast();
 
   const startConversation = async () => {
-    if (isConnecting || isConnected) return; // Prevent multiple calls
-    
-    setIsConnecting(true);
     try {
       // Call Pipecat API to create session
       const response = await fetch("https://api.pipecat.daily.co/v1/public/test/start", {
@@ -65,8 +61,9 @@ const VoiceAgent = () => {
       setIsConnected(true);
 
       // Listen for participant events
-      frame.on("participant-joined", (event: any) => {
-        console.log("Participant joined:", event);
+      frame.on("participant-joined", () => {
+        console.log("Participant joined");
+        setIsSpeaking(true);
       });
 
       frame.on("participant-left", () => {
@@ -74,25 +71,15 @@ const VoiceAgent = () => {
         setIsSpeaking(false);
       });
 
-      // Track when user is speaking using audio level
-      frame.on("active-speaker-change", (event: any) => {
-        console.log("Active speaker:", event);
-        const localParticipant = frame.participants().local;
-        if (event.activeSpeaker?.peerId === localParticipant?.user_id) {
+      frame.on("track-started", (event: any) => {
+        if (event.track.kind === "audio") {
           setIsSpeaking(true);
-        } else {
-          setIsSpeaking(false);
         }
       });
 
-      // Also track participant updates for more granular control
-      frame.on("participant-updated", (event: any) => {
-        const localParticipant = frame.participants().local;
-        if (event.participant?.user_id === localParticipant?.user_id) {
-          // User's audio state changed
-          if (event.participant?.tracks?.audio?.state === "playable") {
-            // User's mic is active but not necessarily speaking
-          }
+      frame.on("track-stopped", (event: any) => {
+        if (event.track.kind === "audio") {
+          setIsSpeaking(false);
         }
       });
 
@@ -107,8 +94,6 @@ const VoiceAgent = () => {
         description: "Could not connect to the farming expert",
         variant: "destructive",
       });
-    } finally {
-      setIsConnecting(false);
     }
   };
 
@@ -157,13 +142,13 @@ const VoiceAgent = () => {
             {/* Microphone button */}
             <div className="flex justify-center">
               <button
-                onClick={startConversation}
-                disabled={isConnected || isConnecting}
+                onClick={isConnected ? undefined : startConversation}
+                disabled={isConnected}
                 className={`
                   relative w-32 h-32 rounded-full bg-accent text-accent-foreground
                   flex items-center justify-center transition-all duration-300
                   ${isConnected && isSpeaking ? "pulse-animation" : ""}
-                  ${!isConnected && !isConnecting ? "hover:scale-110 cursor-pointer shadow-xl" : "cursor-not-allowed"}
+                  ${!isConnected ? "hover:scale-110 cursor-pointer shadow-xl" : "cursor-not-allowed"}
                   disabled:opacity-90
                 `}
               >
@@ -177,7 +162,7 @@ const VoiceAgent = () => {
 
             {/* Status text */}
             <p className="text-primary font-medium">
-              {isConnecting ? "Connecting..." : isSpeaking ? "You are speaking..." : isConnected ? "Listening..." : "Tap to start"}
+              {isSpeaking ? "You are speaking..." : isConnected ? "Listening..." : "Tap to start"}
             </p>
 
             {/* End conversation button */}
