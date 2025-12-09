@@ -19,7 +19,7 @@ const VoiceAgent = () => {
     connectLockRef.current = true;
     try {
       // Call Pipecat API to create session
-      const response = await fetch("https://api.pipecat.daily.co/v1/public/test/start", {
+      const response = await fetch("https://api.pipecat.daily.co/v1/public/v3/start", {
         method: "POST",
         headers: {
           "Authorization": "Bearer pk_aff3af37-4821-4efc-9776-1f2d300a52d0",
